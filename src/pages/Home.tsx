@@ -67,6 +67,19 @@ export function Home() {
           </Link>
         ))}
 
+        {albums !== null && albums.length === 0 ? (
+          <div className="col-span-full flex min-h-[40vh] items-center justify-center">
+            <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-white/5 p-6 text-center">
+              <h2 className="text-lg font-semibold tracking-tight text-white">
+                Sin álbumes para mostrar
+              </h2>
+              <p className="mt-2 text-sm text-white/60">
+                Volvé más tarde.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {albums === null ? (
           <div className="col-span-full flex min-h-[50vh] items-center justify-center">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">

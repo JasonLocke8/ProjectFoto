@@ -102,56 +102,77 @@ export function Album() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-        {album.photos.map((photo) => (
-          <figure
-            key={photo.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => setSelectedPhoto(photo)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') setSelectedPhoto(photo)
-            }}
-            className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/5 outline-none ring-fuchsia-400/20 transition hover:ring-1 focus-visible:ring-2"
-          >
-            <div className="aspect-square">
-              <img
-                src={photo.src}
-                alt={photo.alt}
-                loading="lazy"
-                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-              />
+      {album.photos.length === 0 ? (
+        <section className="flex min-h-[40vh] items-center justify-center">
+          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-white/5 p-6 text-center">
+            <h2 className="text-lg font-semibold tracking-tight text-white">
+              Sin fotos para ver
+            </h2>
+            <p className="mt-2 text-sm text-white/60">
+              Este álbum todavía no tiene fotos cargadas.
+            </p>
+            <div className="mt-4">
+              <Link
+                to="/"
+                className="inline-flex items-center rounded-full bg-white/5 px-3 py-2 text-sm text-white/80 ring-1 ring-white/10 hover:bg-white/10"
+              >
+                Volver al inicio
+              </Link>
             </div>
-
-            <div className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
-              <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/10 to-transparent" />
-              <div className="absolute inset-0 ring-1 ring-fuchsia-400/20" />
-
-              {photo.location ? (
-                <div className="absolute right-2 top-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                    <span className="h-3.5 w-3.5">
-                      <LocationPinIcon />
-                    </span>
-                    <span className="max-w-40 truncate">{photo.location}</span>
-                  </span>
-                </div>
-              ) : null}
-
-              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs">
-                <span className="truncate text-white/85">
-                  {photo.caption ?? 'Foto'}
-                </span>
-                {photo.takenAt ? (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/70">
-                    {formatPhotoDate(photo.takenAt)}
-                  </span>
-                ) : null}
+          </div>
+        </section>
+      ) : (
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          {album.photos.map((photo) => (
+            <figure
+              key={photo.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedPhoto(photo)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') setSelectedPhoto(photo)
+              }}
+              className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/5 outline-none ring-fuchsia-400/20 transition hover:ring-1 focus-visible:ring-2"
+            >
+              <div className="aspect-square">
+                <img
+                  src={photo.src}
+                  alt={photo.alt}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                />
               </div>
-            </div>
-          </figure>
-        ))}
-      </section>
+
+              <div className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
+                <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/10 to-transparent" />
+                <div className="absolute inset-0 ring-1 ring-fuchsia-400/20" />
+
+                {photo.location ? (
+                  <div className="absolute right-2 top-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                      <span className="h-3.5 w-3.5">
+                        <LocationPinIcon />
+                      </span>
+                      <span className="max-w-40 truncate">{photo.location}</span>
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-xs">
+                  <span className="truncate text-white/85">
+                    {photo.caption ?? 'Foto'}
+                  </span>
+                  {photo.takenAt ? (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/70">
+                      {formatPhotoDate(photo.takenAt)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </figure>
+          ))}
+        </section>
+      )}
 
       {selectedPhoto ? (
         <div
