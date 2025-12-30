@@ -255,14 +255,51 @@ export function Album() {
 }
 
 function formatPhotoDate(value: string) {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
+  const parsed = parsePhotoDate(value)
+  if (!parsed) return value
   return new Intl.DateTimeFormat('es-ES', {
     timeZone: 'UTC',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(parsed)
+}
+
+function parsePhotoDate(value: string): Date | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const isoParsed = new Date(trimmed)
+  if (!Number.isNaN(isoParsed.getTime())) return isoParsed
+
+  const match = /^([0-3]\d)\/([0-1]\d)\/(\d{4})$/.exec(trimmed)
+  if (!match) return null
+
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) {
+    return null
+  }
+
+  if (month < 1 || month > 12) return null
+  if (day < 1 || day > 31) return null
+
+  const utcMillis = Date.UTC(year, month - 1, day)
+  const date = new Date(utcMillis)
+  if (Number.isNaN(date.getTime())) return null
+
+  // Validate that Date didn't roll over (e.g. 31/02/2025).
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  return date
 }
 
 function ArrowLeftIcon() {
