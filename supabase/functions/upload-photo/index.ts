@@ -26,12 +26,46 @@ function splitList(value: string | undefined | null) {
     .filter(Boolean)
 }
 
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error) return false
+  const message =
+    typeof error === 'object' && error && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : String(error)
+
+  return message.toLowerCase().includes(`column "${columnName.toLowerCase()}"`) &&
+    message.toLowerCase().includes('does not exist')
+}
+
+function normalizeTakenAt(value: unknown) {
+  if (value == null) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+
+  // Allow YYYY-MM-DD (date only) or any ISO-ish string that Date can parse.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const ms = Date.parse(raw)
+  if (Number.isNaN(ms)) return null
+  return new Date(ms).toISOString()
+}
+
 function buildObjectPath(albumSlug: string, originalName: string) {
+  // Force all objects to live under the `albums/` prefix within the bucket.
+  // Also sanitize the slug so a caller can't inject extra path segments.
+  const safeSlug = albumSlug
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.+/g, '')
+    .replace(/\//g, '-')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .toLowerCase()
+
   const safeName = originalName.replace(/[^a-zA-Z0-9._-]+/g, '_')
   const ext = safeName.includes('.') ? safeName.split('.').pop() : undefined
   const base = crypto.randomUUID()
   const filename = ext ? `${base}.${ext}` : base
-  return `${albumSlug}/${filename}`
+  return `albums/${safeSlug}/${filename}`
 }
 
 serve(async (req: Request) => {
@@ -91,14 +125,26 @@ serve(async (req: Request) => {
 
   const form = await req.formData()
   const albumSlug = String(form.get('album_slug') ?? '').trim()
-  const alt = String(form.get('alt') ?? '').trim()
+  const altRaw = form.get('alt')
+  const alt = altRaw == null ? null : String(altRaw).trim() || null
   const captionRaw = form.get('caption')
   const caption = captionRaw == null ? null : String(captionRaw).trim() || null
+  const urlParams = new URL(req.url).searchParams
+  const locationRaw = form.get('location') ?? urlParams.get('location')
+  const location = locationRaw == null ? null : String(locationRaw).trim() || null
+  const takenAtRaw = form.get('taken_at') ?? urlParams.get('taken_at')
+  const takenAt = normalizeTakenAt(takenAtRaw)
   const file = form.get('file')
 
   if (!albumSlug) return json(req, 400, { error: 'album_slug is required' })
-  if (!alt) return json(req, 400, { error: 'alt is required' })
   if (!(file instanceof File)) return json(req, 400, { error: 'file is required' })
+
+  // If the user provided taken_at but it's invalid, fail early (before uploading).
+  if (takenAtRaw != null && String(takenAtRaw).trim() !== '' && takenAt == null) {
+    return json(req, 400, {
+      error: 'Invalid taken_at. Use YYYY-MM-DD or ISO 8601 (e.g. 2024-06-12T15:30:00Z).',
+    })
+  }
 
   const maxBytes = Number(env('MAX_UPLOAD_BYTES') ?? 15 * 1024 * 1024)
   if (file.size > maxBytes) {
@@ -122,26 +168,83 @@ serve(async (req: Request) => {
 
   if (uploadError) return json(req, 500, { error: uploadError.message })
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
-    .from('photos')
-    .insert({
-      album_slug: albumSlug,
-      alt,
-      caption,
-      image_path: path,
-    })
-    .select('id, image_path')
-    .single()
+  // Insert photo row with smart fallback: if optional columns don't exist yet,
+  // retry dropping ONLY the missing column(s) so we don't accidentally lose `location`.
+  const baseRow: Record<string, unknown> = {
+    album_slug: albumSlug,
+    alt,
+    caption,
+    image_path: path,
+  }
 
-  if (insertError) return json(req, 500, { error: insertError.message })
+  const row: Record<string, unknown> = { ...baseRow }
+  if (location != null) row.location = location
+  if (takenAt != null) row.taken_at = takenAt
+
+  let finalInserted: { id: string; image_path: string; location?: string | null; taken_at?: string | null } | null = null
+  let finalInsertError: unknown = null
+
+  for (let attemptIndex = 0; attemptIndex < 3; attemptIndex++) {
+    const attempt = await supabaseAdmin
+      .from('photos')
+      .insert(row)
+      .select('id, image_path, location, taken_at')
+      .single()
+
+    if (!attempt.error) {
+      finalInserted = attempt.data
+      finalInsertError = null
+      break
+    }
+
+    finalInsertError = attempt.error
+
+    let removedAny = false
+    if ('location' in row && isMissingColumnError(finalInsertError, 'location')) {
+      delete row.location
+      removedAny = true
+    }
+    if ('taken_at' in row && isMissingColumnError(finalInsertError, 'taken_at')) {
+      delete row.taken_at
+      removedAny = true
+    }
+
+    if (!removedAny) break
+  }
+
+  if (finalInsertError || !finalInserted) {
+    try {
+      await supabaseAdmin.storage.from(bucket).remove([path])
+    } catch {
+      // ignore cleanup failures
+    }
+
+    const code = typeof finalInsertError === 'object' && finalInsertError && 'code' in finalInsertError
+      ? String((finalInsertError as { code: unknown }).code)
+      : ''
+
+    if (code === '23503') {
+      return json(req, 400, {
+        error: `album_slug does not exist: ${albumSlug}`,
+      })
+    }
+
+    const message =
+      typeof finalInsertError === 'object' && finalInsertError && 'message' in finalInsertError
+        ? String((finalInsertError as { message: unknown }).message)
+        : 'Failed to insert photo'
+    return json(req, 500, { error: message })
+  }
 
   const { data: publicData } = supabaseAdmin.storage.from(bucket).getPublicUrl(path)
 
   return json(req, 200, {
     ok: true,
     photo: {
-      id: inserted.id,
-      image_path: inserted.image_path,
+      id: finalInserted.id,
+      image_path: finalInserted.image_path,
+      location: 'location' in finalInserted ? (finalInserted.location ?? null) : null,
+      taken_at: 'taken_at' in finalInserted ? (finalInserted.taken_at ?? null) : null,
       public_url: publicData.publicUrl,
     },
   })

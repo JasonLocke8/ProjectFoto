@@ -1,0 +1,4 @@
+# Supabase Edge Function config
+# Disables JWT verification at the gateway for this function.
+# We still enforce access via x-admin-secret inside the function.
+verify_jwt = false
