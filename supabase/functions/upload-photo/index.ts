@@ -42,8 +42,38 @@ function normalizeTakenAt(value: unknown) {
   const raw = String(value).trim()
   if (!raw) return null
 
-  // Allow YYYY-MM-DD (date only) or any ISO-ish string that Date can parse.
+  // Allow YYYY-MM-DD (date only), DD/MM/YYYY (date only), or any ISO-ish string
+  // that Date can parse.
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+
+  const ddmmyyyy = /^([0-3]\d)\/([0-1]\d)\/(\d{4})$/.exec(raw)
+  if (ddmmyyyy) {
+    const day = Number(ddmmyyyy[1])
+    const month = Number(ddmmyyyy[2])
+    const year = Number(ddmmyyyy[3])
+
+    if (month < 1 || month > 12) return null
+    if (day < 1 || day > 31) return null
+
+    const utcMillis = Date.UTC(year, month - 1, day)
+    const date = new Date(utcMillis)
+    if (Number.isNaN(date.getTime())) return null
+
+    // Validate that Date didn't roll over (e.g. 31/02/2025).
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) {
+      return null
+    }
+
+    // Return as YYYY-MM-DD to keep date-only semantics.
+    return `${year.toString().padStart(4, '0')}-${month
+      .toString()
+      .padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+  }
+
   const ms = Date.parse(raw)
   if (Number.isNaN(ms)) return null
   return new Date(ms).toISOString()
@@ -142,7 +172,8 @@ serve(async (req: Request) => {
   // If the user provided taken_at but it's invalid, fail early (before uploading).
   if (takenAtRaw != null && String(takenAtRaw).trim() !== '' && takenAt == null) {
     return json(req, 400, {
-      error: 'Invalid taken_at. Use YYYY-MM-DD or ISO 8601 (e.g. 2024-06-12T15:30:00Z).',
+      error:
+        'Invalid taken_at. Use DD/MM/YYYY, YYYY-MM-DD or ISO 8601 (e.g. 2024-06-12T15:30:00Z).',
     })
   }
 

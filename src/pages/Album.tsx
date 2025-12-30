@@ -290,7 +290,6 @@ function parsePhotoDate(value: string): Date | null {
   const date = new Date(utcMillis)
   if (Number.isNaN(date.getTime())) return null
 
-  // Validate that Date didn't roll over (e.g. 31/02/2025).
   if (
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month - 1 ||
