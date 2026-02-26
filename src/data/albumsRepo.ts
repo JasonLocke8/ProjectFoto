@@ -49,12 +49,26 @@ export async function listAlbums(): Promise<Album[]> {
 
   if (error || !dbAlbums) return albums
 
+  // Count photos for each album
+  const photoCounts = new Map<string, number>()
+  for (const album of dbAlbums) {
+    const { count } = await supabase
+      .from('photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('album_slug', album.slug)
+    photoCounts.set(album.slug, count ?? 0)
+  }
+
   const mapped: Album[] = dbAlbums.map((a: DbAlbum) => ({
     slug: a.slug,
     title: a.title,
     subtitle: a.subtitle ?? undefined,
     coverSrc: a.cover_path ? publicUrlForPath(a.cover_path) : '',
-    photos: [],
+    photos: new Array(photoCounts.get(a.slug) ?? 0).fill(null).map((_, i) => ({
+      id: String(i),
+      src: '',
+      alt: '',
+    })),
   }))
 
   return mapped
